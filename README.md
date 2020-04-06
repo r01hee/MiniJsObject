@@ -6,7 +6,7 @@ Easy to use for such as Unity because this program is only one file.
 This project inspired by Calvin Rien's [darktable/MiniJSON.cs](https://gist.github.com/darktable/1411710),  
 thanks a lot ツ .
 
-# Setup
+## Setup
 
 Copy [MiniJsObject.cs](https://github.com/r01hee/MiniJsObject/blob/master/MiniJsObject.cs) in your project.  
 
@@ -25,6 +25,13 @@ namespace Example
 {
     class Program
     {
+        enum Type
+        {
+            Cube = 0,
+            Sphere = 1,
+            Cylinder = 2,
+        }
+
         class Vector2
         {
           // public fields
@@ -45,8 +52,12 @@ namespace Example
         class Item
         {
           // nullable
-          public int? Status { get; set; }
+          public int? Priority { get; set; }
 
+          // enum
+          public Type Type { get; set; }
+
+          // nested object
           public Vector2 Position { get; set; }
         }
 
@@ -55,6 +66,7 @@ namespace Example
             // public properties
             public string Name { get; set; }
 
+            // collection
             public ICollection<Item> Items { get; set; }
         }
 
@@ -65,14 +77,16 @@ namespace Example
     ""name"": ""example"",
     ""items"": [
         {
-            ""status"": null,
+            ""type"": ""Cube"",
+            ""priority"": null,
             ""position"": {
                 ""x"": 11,
                 ""y"": 12
             }
         },
         {
-            ""status"": 2,
+            ""type"": 2,
+            ""priority"": 2,
             ""position"": {
                 ""x"": 21,
                 ""y"": 22
@@ -93,8 +107,6 @@ namespace Example
 ## Not Implemented 
 
 - ToJsObject() method
-
-- To Parse `Enum`
 
 ## License
 

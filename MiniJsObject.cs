@@ -12,8 +12,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 
 namespace MiniJsObject
 {
@@ -61,39 +63,160 @@ namespace MiniJsObject
             return genericTypes.Any(x => x.MakeGenericType(args).Equals(type));
         }
 
+        private static bool IsNumericType(Type type)
+        {
+            return (typeof(Byte).Equals(type) ||
+                    typeof(Int16).Equals(type) ||
+                    typeof(Int32).Equals(type) ||
+                    typeof(Int64).Equals(type) ||
+                    typeof(SByte).Equals(type) ||
+                    typeof(UInt16).Equals(type) ||
+                    typeof(UInt32).Equals(type) ||
+                    typeof(UInt64).Equals(type) ||
+                    typeof(BigInteger).Equals(type) ||
+                    typeof(Decimal).Equals(type) ||
+                    typeof(Double).Equals(type) ||
+                    typeof(Single).Equals(type));
+        }
+
+        private static bool IsNumeric(object value)
+        {
+            return (value is Byte ||
+                    value is Int16 ||
+                    value is Int32 ||
+                    value is Int64 ||
+                    value is SByte ||
+                    value is UInt16 ||
+                    value is UInt32 ||
+                    value is UInt64 ||
+                    value is BigInteger ||
+                    value is Decimal ||
+                    value is Double ||
+                    value is Single);
+        }
+
         #endregion
 
         #region Parse
 
-        private static bool TryParseValue(object jsObject, Type type, out object obj)
+        private static bool TryParseEnum(object jsObject, Type type, out object obj)
         {
-            if (jsObject == null ||
-                !(typeof(ValueType).IsAssignableFrom(type) || typeof(string).Equals(type)))
+            Type actualType = type.IsGenericType ? type.GetGenericArguments()[0] : type;
+            if (jsObject == null || !typeof(Enum).IsAssignableFrom(actualType))
             {
                 obj = null;
                 return false;
             }
 
-            if (IsGuidType(type))
+            var members = Enum.GetValues(actualType).Cast<Enum>().ToArray();
+            if (jsObject is string str)
             {
-                var j = jsObject as string;
-                if (j == null)
+                Enum m;
+
+                m = members.FirstOrDefault(m => str == actualType.GetField(m.ToString()).GetCustomAttribute<EnumMemberAttribute>()?.Value);
+                if (m != null)
                 {
-                    obj = null;
-                    return false;
+                    obj = m;
+                    return true;
                 }
-                obj = new Guid(j);
-                return true;
+
+                m = members.FirstOrDefault(m => str == m.ToString());
+                if (m != null)
+                {
+                    obj = m;
+                    return true;
+                }
+            }
+            
+            if (TryParseNumeric(jsObject, Enum.GetUnderlyingType(actualType), out var parsedObj))
+            {
+                var parsedObjType = parsedObj.GetType();
+
+                var m = members.FirstOrDefault(m => parsedObj.Equals(Convert.ChangeType(m, parsedObjType)));
+                if (m != null)
+                {
+                    obj = m;
+                    return true;
+                }
+            }
+            
+            obj = null;
+            return false;
+        }
+
+        private static bool TryParseNumeric(object jsObject, Type type, out object obj)
+        {
+            Type actualType = IsNullable(type) ? type.GetGenericArguments()[0] : type;
+            if (!IsNumeric(jsObject) || !IsNumericType(actualType))
+            {
+                obj = null;
+                return false;
             }
 
-            if (IsNullable(type))
+            obj = Convert.ChangeType(jsObject, actualType);
+            return true;
+        }
+        
+        private static bool TryParseGuid(object jsObject, Type type, out object obj)
+        {
+            if (jsObject == null || !(jsObject is string jsObjectStr) || !IsGuidType(type))
             {
-                obj = Convert.ChangeType(jsObject, type.GetGenericArguments()[0]);
-                return true;
+                obj = null;
+                return false;
+            }
+
+            obj = new Guid(jsObjectStr);
+            return true;
+        }
+
+        private static bool TryParseString(object jsObject, Type type, out object obj)
+        {
+            if (jsObject == null || !(jsObject is string jsObjectStr) || !typeof(string).Equals(type))
+            {
+                obj = null;
+                return false;
             }
 
             obj = jsObject;
             return true;
+        }
+
+        private static bool TryParseValue(object jsObject, Type type, out object obj)
+        {
+            if (jsObject == null)
+            {
+                obj = null;
+                return false;
+            }
+
+            if (jsObject is string jsObjectStr)
+            {
+                if (typeof(string).Equals(type))
+                {
+                    obj = jsObject;
+                    return true;
+                }
+
+                if (IsGuidType(type))
+                {
+                    obj = new Guid(jsObjectStr);
+                    return true;
+                }
+            }
+            else if (typeof(ValueType).IsAssignableFrom(jsObject.GetType()) && typeof(ValueType).IsAssignableFrom(type))
+            {
+                if (IsNullable(type))
+                {
+                    obj = Convert.ChangeType(jsObject, type.GetGenericArguments()[0]);
+                    return true;
+                }
+
+                obj = jsObject;
+                return true;
+            }
+
+            obj = null;
+            return false;
         }
 
         private static bool TryParseDictionary(IDictionary jsObject, Type type, out object value)
@@ -189,7 +312,10 @@ namespace MiniJsObject
             object value;
             if (TryParseDictionary(jsObject as IDictionary, type, out value) ||
                 TryParseList(jsObject as IList, type, out value) ||
-                TryParseValue(jsObject, type, out value)) 
+                TryParseEnum(jsObject, type, out value) ||
+                TryParseGuid(jsObject, type, out value) ||
+                TryParseString(jsObject, type, out value) ||
+                TryParseNumeric(jsObject, type, out value)) 
             {
                 return value;
             }
